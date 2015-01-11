@@ -1,0 +1,117 @@
+.alias  chrout  $ffd2
+.alias  getin   $ffe4
+
+.text
+        ;; PRG header
+        .word   $0801
+        .org    $0801
+
+        ;; BASIC header: Starts as SYS 2065, becomes SYS 2062
+        .word   $080c,2015
+        .byte   $9e,$20,$32,$30,$36
+pstart: .byte   $35,$00,$00,$00
+        ;; This instruction is skipped on first run.
+        jmp     setup_done
+
+.scope
+        ;; Copy the Koala Paint pic (size: $2711) from koala+2 to
+        ;; $6000. (it's koala+2 because we're skipping over the two-byte
+        ;; PRG header we embedded.) This is a destructive self-modifying
+        ;; loop, but that's OK because every run but the first will jump
+        ;; over this code.
+        ldx     #$28
+        ldy     #$00
+_src:   lda     koala+2, y
+_dest:  sta     $6000, y
+        iny
+        bne     _src
+        inc     _src+2
+        inc     _dest+2
+        dex
+        bne     _src
+.scend
+        ;; Rewrite the BASIC kickoff from SYS 2065 to SYS 262, thus
+        ;; hitting the skip instruction up top.
+        lda     #$32
+        sta     pstart
+setup_done:
+        ;; Now the real program begins.
+
+        .alias  bitmap_data     $6000
+        .alias  text_data       bitmap_data+8000
+        .alias  color_data      text_data+1000
+        .alias  bgcolor         color_data+1000
+        lda     #$00
+        sta     $d020
+        lda     bgcolor
+        sta     $d021
+        ldy     #$00
+*       lda     text_data,y
+        sta     $400,y
+        lda     text_data+$0100, y
+        sta     $500,y
+        lda     text_data+$0200, y
+        sta     $600,y
+        lda     text_data+$02e8, y
+        sta     $6e8,y
+        lda     color_data, y
+        sta     $d800,y
+        lda     color_data+$0100, y
+        sta     $d900,y
+        lda     color_data+$0200, y
+        sta     $da00,y
+        lda     color_data+$02e8, y
+        sta     $dae8,y
+        iny
+        bne     -
+        lda     #<bitmap_data
+        sta     $fb
+        lda     #>bitmap_data
+        sta     $fc
+        lda     #$00
+        sta     $fd
+        lda     #$20
+        sta     $fe
+        ldx     #$20
+*       lda     ($fb), y
+        sta     ($fd), y
+        iny
+        bne     -
+        inc     $fc
+        inc     $fe
+        dex
+        bne     -
+
+        ;; Go into multicolor bitmap mode, with gfx at $2000
+        lda     $d016
+        ora     #$10
+        sta     $d016
+        lda     $d011
+        ora     #$20
+        sta     $d011
+        lda     #$18
+        sta     $d018
+        
+        ;; Wait for a key
+*       jsr     getin
+        beq     -
+
+        ;; Get back into normal mode
+        lda     #14
+        sta     $d020
+        lda     #6
+        sta     $d021
+        lda     $d016
+        and     #$ef
+        sta     $d016
+        lda     $d011
+        and     #$df
+        sta     $d011
+        lda     #$14
+        sta     $d018
+        lda     #147
+        jsr     chrout
+        jmp     ($A002)
+
+        ;; And then our Koala Paint data starts right past here.
+koala:
